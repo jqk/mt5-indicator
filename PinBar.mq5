@@ -11,30 +11,30 @@
 #property indicator_buffers 7
 #property indicator_plots   7
 
-//--- plot 0-2: 买入数字1/2/3（信号K线低点下方，数字=CB组合K线数）
+//--- plot 0-2: 买入数字1/2/3（绘制改由 OBJ_TEXT 对象完成，本 plot 仅作缓冲）
 #property indicator_label1  "买入1"
-#property indicator_type1   DRAW_ARROW
+#property indicator_type1   DRAW_NONE
 #property indicator_color1  clrLime
 #property indicator_width1  1
 #property indicator_label2  "买入2"
-#property indicator_type2   DRAW_ARROW
+#property indicator_type2   DRAW_NONE
 #property indicator_color2  clrLime
 #property indicator_width2  1
 #property indicator_label3  "买入3"
-#property indicator_type3   DRAW_ARROW
+#property indicator_type3   DRAW_NONE
 #property indicator_color3  clrLime
 #property indicator_width3  1
-//--- plot 3-5: 卖出数字1/2/3（信号K线高点上方，数字=CB组合K线数）
+//--- plot 3-5: 卖出数字1/2/3
 #property indicator_label4  "卖出1"
-#property indicator_type4   DRAW_ARROW
+#property indicator_type4   DRAW_NONE
 #property indicator_color4  clrRed
 #property indicator_width4  1
 #property indicator_label5  "卖出2"
-#property indicator_type5   DRAW_ARROW
+#property indicator_type5   DRAW_NONE
 #property indicator_color5  clrRed
 #property indicator_width5  1
 #property indicator_label6  "卖出3"
-#property indicator_type6   DRAW_ARROW
+#property indicator_type6   DRAW_NONE
 #property indicator_color6  clrRed
 #property indicator_width6  1
 //--- plot 6: 信号类型（不可见，供 EA 通过 iCustom 读取）
@@ -48,10 +48,9 @@
 #define SIG_DOJI        3.0  // 十字星
 #define SIG_PIN_BOTH    4.0  // 底+顶 pinbar 同时成立（影线等长且双极值）
 
-//--- 数字符号（ASCII 码，同一字体 → 买卖端大小一致）
-#define DIGIT_1  49        // '1'
-#define DIGIT_2  50        // '2'
-#define DIGIT_3  51        // '3'
+//--- OBJ_TEXT 对象名称前缀（用于定位与清理本指标创建的对象）
+#define OBJ_PREFIX_BUY  "jqkPB_"
+#define OBJ_PREFIX_SELL "jqkPS_"
 
 //--- 组合与极值
 input group "=== 组合与极值 ==="
@@ -73,8 +72,10 @@ input double InpMaxDojiBodyPct = 5.0;     // 十字星实体比例上限 %
 input group "=== 显示 ==="
 input color  InpBuyColor       = clrLime; // 买入数字颜色
 input color  InpSellColor      = clrRed;  // 卖出数字颜色
-input int    InpArrowWidth     = 1;       // 数字线宽
-input int    InpArrowShiftPx   = 10;      // 数字与K线的垂直间距（像素）
+input int    InpArrowWidth     = 1;       // 数字线宽（预留，对象模式下暂不用）
+input int    InpArrowShiftPx   = 10;      // 数字与K线的垂直间距（像素，预留）
+input string InpNumberFont     = "Arial"; // 数字字体
+input int    InpNumberSize     = 12;      // 数字字号
 
 //--- 报警（预留：启用时取消本行与 EvaluateBar 中报警代码的注释）
 // input bool InpAlerts = false;  // 收盘信号弹窗报警
@@ -118,35 +119,13 @@ int OnInit()
    SetIndexBuffer(5, SellDigit3, INDICATOR_DATA);
    SetIndexBuffer(6, TypeBuffer, INDICATOR_DATA);
 
-   //--- 数字符号与像素位移（PLOT_ARROW_SHIFT 正值向下、负值向上）
-   PlotIndexSetInteger(0, PLOT_ARROW, DIGIT_1);
-   PlotIndexSetInteger(1, PLOT_ARROW, DIGIT_2);
-   PlotIndexSetInteger(2, PLOT_ARROW, DIGIT_3);
-   PlotIndexSetInteger(3, PLOT_ARROW, DIGIT_1);
-   PlotIndexSetInteger(4, PLOT_ARROW, DIGIT_2);
-   PlotIndexSetInteger(5, PLOT_ARROW, DIGIT_3);
-   //--- 买入（0-2）：低点下方；卖出（3-5）：高点上方
-   for(int p = 0; p < 3; p++)
-      PlotIndexSetInteger(p,   PLOT_ARROW_SHIFT,  InpArrowShiftPx);
-   for(int p = 3; p < 6; p++)
-      PlotIndexSetInteger(p,   PLOT_ARROW_SHIFT, -InpArrowShiftPx);
-
-   //--- 空值约定：数字用 EMPTY_VALUE，信号类型用 0
+   //--- 空值约定：数字缓冲用 EMPTY_VALUE，信号类型用 0
    for(int p = 0; p < 6; p++)
       PlotIndexSetDouble(p, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, 0.0);
 
-   //--- 颜色与线宽（以输入参数为准）
-   for(int p = 0; p < 3; p++)
-     {
-      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0, InpBuyColor);
-      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
-     }
-   for(int p = 3; p < 6; p++)
-     {
-      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0, InpSellColor);
-      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
-     }
+   //--- 清理可能遗留的对象（切换参数/重载时防止残留）
+   CleanupObjects();
 
    //--- 预热期之前不绘制
    int draw_begin = MathMax(InpLookbackBars, InpAtrPeriod + InpCbBars);
@@ -203,32 +182,61 @@ void UpdateAtr(const int rates_total, const int prev_calculated,
   }
 
 //+------------------------------------------------------------------+
-//| 将买/卖数字写入对应 k 的缓冲（k=1..InpCbBars）                       |
+//| 创建一个数字文本对象 OBJ_TEXT                                      |
+//| side：true=买入(低点下方) false=卖出(高点上方)；k=CB组合K线数 1..3    |
 //+------------------------------------------------------------------+
-void SetBuyDigit(const int i, const int k, const double price)
+void CreateDigitObject(const int i, const datetime t, const bool buy,
+                       const int k, const double price)
   {
-   if(k == 1)
-      BuyDigit1[i] = price;
-   else if(k == 2)
-      BuyDigit2[i] = price;
+   string name = (buy ? OBJ_PREFIX_BUY : OBJ_PREFIX_SELL) + IntegerToString(i);
+   //--- 若有同名对象先删除，避免残留
+   if(ObjectFind(0, name) >= 0)
+      ObjectDelete(0, name);
+
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
+      return;
+
+   //--- 文本与字体（同一字体、字号 → 买卖端大小一致）
+   ObjectSetString(0, name, OBJPROP_TEXT, IntegerToString(k));
+   ObjectSetString(0, name, OBJPROP_FONT, InpNumberFont);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, InpNumberSize);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, buy ? InpBuyColor : InpSellColor);
+   ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR,
+                    buy ? ANCHOR_TOP : ANCHOR_BOTTOM);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+
+   //--- 备份数值到缓冲（供 iCustom/调试读取，DRAW_NONE 不显示）
+   if(buy)
+     {
+      if(k == 1)      BuyDigit1[i]  = price;
+      else if(k == 2) BuyDigit2[i]  = price;
+      else            BuyDigit3[i]  = price;
+     }
    else
-      BuyDigit3[i] = price;
+     {
+      if(k == 1)      SellDigit1[i] = price;
+      else if(k == 2) SellDigit2[i] = price;
+      else            SellDigit3[i] = price;
+     }
   }
 
-void SetSellDigit(const int i, const int k, const double price)
+//+------------------------------------------------------------------+
+//| 删除索引 i 对应的买卖数字对象                                      |
+//+------------------------------------------------------------------+
+void DeleteObjects(const int i)
   {
-   if(k == 1)
-      SellDigit1[i] = price;
-   else if(k == 2)
-      SellDigit2[i] = price;
-   else
-      SellDigit3[i] = price;
+   string nb = OBJ_PREFIX_BUY  + IntegerToString(i);
+   string ns = OBJ_PREFIX_SELL + IntegerToString(i);
+   if(ObjectFind(0, nb) >= 0) ObjectDelete(0, nb);
+   if(ObjectFind(0, ns) >= 0) ObjectDelete(0, ns);
   }
 
 //+------------------------------------------------------------------+
-//| 清空索引 i 上的所有数字与信号类型                                    |
+//| 清空索引 i 上的所有数字缓冲、对象与信号类型                         |
 //+------------------------------------------------------------------+
-void ClearDigits(const int i)
+void ClearIndex(const int i)
   {
    BuyDigit1[i]  = EMPTY_VALUE;
    BuyDigit2[i]  = EMPTY_VALUE;
@@ -237,12 +245,28 @@ void ClearDigits(const int i)
    SellDigit2[i] = EMPTY_VALUE;
    SellDigit3[i] = EMPTY_VALUE;
    TypeBuffer[i] = SIG_NONE;
+   DeleteObjects(i);
+  }
+
+//+------------------------------------------------------------------+
+//| 删除本指标创建的全部对象（重载/重建时调用）                           |
+//+------------------------------------------------------------------+
+void CleanupObjects()
+  {
+   for(int i = ObjectsTotal(0) - 1; i >= 0; i--)
+     {
+      string name = ObjectName(0, i);
+      if(StringFind(name, OBJ_PREFIX_BUY)  == 0 ||
+         StringFind(name, OBJ_PREFIX_SELL) == 0)
+         ObjectDelete(0, name);
+     }
   }
 
 //+------------------------------------------------------------------+
 //| 对已收盘K线 i 做信号评估（k = 1..n，命中即止）                        |
 //+------------------------------------------------------------------+
 void EvaluateBar(const int i, const int rates_total, const bool live,
+                 const datetime &time[],
                  const double &open[], const double &high[],
                  const double &low[],  const double &close[])
   {
@@ -315,9 +339,9 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
 
       //--- 流程第 5 步：画数字（1/2/3 = CB 组合K线数 k）并记录类型
       if(buy)
-         SetBuyDigit(i, k, cbLow);
+         CreateDigitObject(i, time[i], true,  k, cbLow);
       if(sell)
-         SetSellDigit(i, k, cbHigh);
+         CreateDigitObject(i, time[i], false, k, cbHigh);
       TypeBuffer[i] = isPin ? (buy && sell ? SIG_PIN_BOTH
                                            : (buy ? SIG_BOTTOM_PIN : SIG_TOP_PIN))
                             : SIG_DOJI;
@@ -350,6 +374,7 @@ int OnCalculate(const int rates_total,
       return(0);
 
    //--- 统一按非序列索引处理（0 = 最旧一根）
+   ArraySetAsSeries(time,  false);
    ArraySetAsSeries(open,  false);
    ArraySetAsSeries(high,  false);
    ArraySetAsSeries(low,   false);
@@ -369,6 +394,7 @@ int OnCalculate(const int rates_total,
       ArrayInitialize(SellDigit2, EMPTY_VALUE);
       ArrayInitialize(SellDigit3, EMPTY_VALUE);
       ArrayInitialize(TypeBuffer, SIG_NONE);
+      CleanupObjects();                       // 全量重算：清掉所有旧对象避免残留
       start = MathMax(warmup, rates_total - 1 - InpMaxBars);   // 2.8：只算最近 InpMaxBars 根
      }
    else
@@ -376,12 +402,12 @@ int OnCalculate(const int rates_total,
 
    for(int i = start; i <= rates_total - 2; i++)
      {
-      ClearDigits(i);
-      EvaluateBar(i, rates_total, prev_calculated > 0, open, high, low, close);
+      ClearIndex(i);
+      EvaluateBar(i, rates_total, prev_calculated > 0, time, open, high, low, close);
      }
 
    //--- 正在形成的K线保持空值
-   ClearDigits(rates_total - 1);
+   ClearIndex(rates_total - 1);
 
    return(rates_total);
   }

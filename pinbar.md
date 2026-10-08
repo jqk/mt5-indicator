@@ -97,7 +97,7 @@ CB 线开盘价与收盘价之差的绝对值与 CB 线整体高度的比值。�
 ## 四、 实现约定
 
 - 文件名 `PinBar.mq5`，图表窗口指标，短名 `PinBar(n,m)`。
-- 输出 7 个 plot：买入数字 1/2/3、卖出数字 1/2/3（数字=生效的 CB 组合 K 线数 k，同一字体买卖端大小一致）、信号类型（隐藏缓冲，供 EA 通过 iCustom 读取：0=无，1=底 pinbar，2=顶 pinbar，3=十字星，4=底 pinbar 与顶 pinbar 同时成立——影线等长且同时创新高新低的罕见情况）。EA 读取信号类型时，plot 索引 6（即 iCustom 的第 0 个缓冲以外的第 7 个缓冲）为信号类型。
+- 输出 7 个缓冲：买入 1/2/3、卖出 1/2/3、信号类型。数字 1/2/3 对应生效的 CB 组合 K 线数 k，买入显示在信号 K 线低点下方、卖出显示在信号 K 线高点上方；数字**不用缓冲的 DRAW_ARROW 绘制**（该方式只能渲染 Wingdings 符号，无法显示文字数字），而是以 `OBJ_TEXT` 图表对象绘制，买卖端使用同一字体与字号，因此大小一致。信号类型缓冲（plot 6，即 iCustom 第 7 个缓冲）供 EA 读取：0=无，1=底 pinbar，2=顶 pinbar，3=十字星，4=底 pinbar 与顶 pinbar 同时成立——影线等长且同时创新高新低的罕见情况。对象命名带前缀 `jqkPB_`/`jqkPS_` 并随重算清理，指标卸载时一并移除。
 - 只评估已收盘 K 线，信号一旦出现不再变化（不重绘）。
 - ATR 在指标内部按 Wilder 平滑自行计算，不依赖 iATR 句柄。
 - 输入参数以 `Inp`（Input 惯例前缀）命名，`input` 语句的中文注释将显示在参数对话框中：
@@ -112,10 +112,12 @@ CB 线开盘价与收盘价之差的绝对值与 CB 线整体高度的比值。�
 | 锤头比例预定义有效值 | `InpMaxHeadPct` | double | 33.0 | 百分数，范围 1–50 |
 | 锤头比例加权 | `InpHeadWeighted` | bool | false | |
 | 十字比例 | `InpMaxDojiBodyPct` | double | 5.0 | 百分数，范围 0–10 |
-| 买入数字颜色 | `InpBuyColor` | color | clrLime | | 
+| 买入数字颜色 | `InpBuyColor` | color | clrLime | |
 | 卖出数字颜色 | `InpSellColor` | color | clrRed | |
-| 数字线宽 | `InpArrowWidth` | int | 1 | | 
-| 数字间距（像素） | `InpArrowShiftPx` | int | 10 | 买入向下、卖出向上偏移 |
+| 数字字体 | `InpNumberFont` | string | Arial | 选取支持数字的字体 |
+| 数字字号 | `InpNumberSize` | int | 12 | 买卖端使用同一字号（大小一致） |
+| 数字线宽（预留） | `InpArrowWidth` | int | 1 | 对象模式暂不使用 |
+| 数字间距（预留） | `InpArrowShiftPx` | int | 10 | 对象模式暂不使用 |
 
 - 输入校验：n 范围、m > n、各比例范围，不合格拒绝加载并输出日志。
 - 比例比较使用全精度，两位小数仅用于显示；极值并列（同高/同低）视为合格；同方向连续信号暂不去重。
