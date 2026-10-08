@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //|                                                       PinBar.mq5 |
 //|                                 jqk - 组合K线 pinbar / 十字星信号 |
 //|                                 规格说明见同目录 pinbar.md          |
@@ -121,8 +121,8 @@ double g_atr[];
 //+------------------------------------------------------------------+
 int OnInit()
   {
-   //--- 参数校验：不合法直接返回 INIT_PARAMETERS_INCORRECT，这样指标就不会被加载，
-   //   避免带着坏参数去跑。每个分支都会 Print 出具体原因，方便排查。
+//--- 参数校验：不合法直接返回 INIT_PARAMETERS_INCORRECT，这样指标就不会被加载，
+//   避免带着坏参数去跑。每个分支都会 Print 出具体原因，方便排查。
    if(InpCbBars < 1 || InpCbBars > 3)
      { Print("参数错误：组合K线数量 n 必须在 1-3 之间"); return(INIT_PARAMETERS_INCORRECT); }
    if(InpLookbackBars <= InpCbBars)
@@ -138,8 +138,8 @@ int OnInit()
    if(InpMaxDojiBodyPct < 0.0 || InpMaxDojiBodyPct > 10.0)
      { Print("参数错误：十字比例必须在 0-10 之间"); return(INIT_PARAMETERS_INCORRECT); }
 
-   //--- 把全局数组绑定到“指标缓冲”→ 之后对数组的读写就等价于对图表缓冲的读写。
-   //   顺序必须与 indicator_plots 一一对应：0-2 买入1/2/3，3-5 卖出1/2/3，6 信号类型。
+//--- 把全局数组绑定到“指标缓冲”→ 之后对数组的读写就等价于对图表缓冲的读写。
+//   顺序必须与 indicator_plots 一一对应：0-2 买入1/2/3，3-5 卖出1/2/3，6 信号类型。
    SetIndexBuffer(0, BuyDigit1,  INDICATOR_DATA);
    SetIndexBuffer(1, BuyDigit2,  INDICATOR_DATA);
    SetIndexBuffer(2, BuyDigit3,  INDICATOR_DATA);
@@ -148,11 +148,11 @@ int OnInit()
    SetIndexBuffer(5, SellDigit3, INDICATOR_DATA);
    SetIndexBuffer(6, TypeBuffer, INDICATOR_DATA);
 
-   //--- 为 6 个信号 plot 设置：使用的符号、颜色、线宽、垂直偏移。
-   //   PLOT_ARROW    = 信号用的 Wingdings 字符（这里统一用 ● 实心圆点）；
-   //   PLOT_LINE_COLOR = 按 k 分色：plot0/3 红(1根)、1/4 桔红(2根)、2/5 黄(3根)；
-   //   PLOT_ARROW_SHIFT = 像素垂直偏移：（正值向下、负值向上）
-   //       买入(0-2) 向下偏移 → 符号画在K线低点下方；卖出(3-5) 向上偏移 → 画在高点上方。
+//--- 为 6 个信号 plot 设置：使用的符号、颜色、线宽、垂直偏移。
+//   PLOT_ARROW    = 信号用的 Wingdings 字符（这里统一用 ● 实心圆点）；
+//   PLOT_LINE_COLOR = 按 k 分色：plot0/3 红(1根)、1/4 桔红(2根)、2/5 黄(3根)；
+//   PLOT_ARROW_SHIFT = 像素垂直偏移：（正值向下、负值向上）
+//       买入(0-2) 向下偏移 → 符号画在K线低点下方；卖出(3-5) 向上偏移 → 画在高点上方。
    for(int p = 0; p < 3; p++)                    // 买入 0-2
      {
       PlotIndexSetInteger(p, PLOT_ARROW, ARROW_MARK);
@@ -170,19 +170,19 @@ int OnInit()
                           (p == 3) ? COLOR_K1 : (p == 4) ? COLOR_K2 : COLOR_K3);
      }
 
-   //--- 空值约定：没有信号的K线，6个信号缓冲填 EMPTY_VALUE（绘制时自动跳过），
-   //   信号类型缓冲填 0（SIG_NONE）。PLOT_EMPTY_VALUE 告诉平台“什么值算空”。
+//--- 空值约定：没有信号的K线，6个信号缓冲填 EMPTY_VALUE（绘制时自动跳过），
+//   信号类型缓冲填 0（SIG_NONE）。PLOT_EMPTY_VALUE 告诉平台“什么值算空”。
    for(int p = 0; p < 6; p++)
       PlotIndexSetDouble(p, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, 0.0);
 
-   //--- 绘制起点：前 draw_begin 根K线属于“预热/回看不足”区域，不画信号，
-   //   避免在数据不足时产生误导性的早期信号。所有 plot 都从这个起点开始。
+//--- 绘制起点：前 draw_begin 根K线属于“预热/回看不足”区域，不画信号，
+//   避免在数据不足时产生误导性的早期信号。所有 plot 都从这个起点开始。
    int draw_begin = MathMax(InpLookbackBars, InpAtrPeriod + InpCbBars);
    for(int plot = 0; plot < 7; plot++)
       PlotIndexSetInteger(plot, PLOT_DRAW_BEGIN, draw_begin);
 
-   //--- 指标在“数据窗口”显示的短名，以及价格显示精度（位数跟随当前品种 _Digits）
+//--- 指标在“数据窗口”显示的短名，以及价格显示精度（位数跟随当前品种 _Digits）
    IndicatorSetString(INDICATOR_SHORTNAME,
                       StringFormat("PinBar(%d,%d)", InpCbBars, InpLookbackBars));
    IndicatorSetInteger(INDICATOR_DIGITS, _Digits);
@@ -201,6 +201,7 @@ double TrueRange(const int i, const double &high[], const double &low[],
   {
    if(i <= 0)                                  // 最旧那根没有“昨收”，只能用高低差
       return(high[0] - low[0]);
+
    return(MathMax(high[i] - low[i],
                   MathMax(MathAbs(high[i] - close[i-1]),
                           MathAbs(low[i]  - close[i-1]))));
@@ -217,7 +218,7 @@ void UpdateAtr(const int rates_total, const int prev_calculated,
   {
    ArrayResize(g_atr, rates_total);            // 缓冲长度跟随当前K线总数
    int period = InpAtrPeriod;
-   //--- 增量起点：上次已算到 prev_calculated-1，这次从那里接着算（-1 是为了从上一根带出递归值）
+//--- 增量起点：上次已算到 prev_calculated-1，这次从那里接着算（-1 是为了从上一根带出递归值）
    int begin  = (prev_calculated > 0) ? prev_calculated - 1 : 0;
 
    for(int i = begin; i < rates_total; i++)
@@ -250,15 +251,23 @@ void SetDigit(const int i, const bool buy, const int k, const double price)
   {
    if(buy)
      {
-      if(k == 1)      BuyDigit1[i]  = price;   // 1根 → 红
-      else if(k == 2) BuyDigit2[i]  = price;   // 2根 → 桔红
-      else            BuyDigit3[i]  = price;   // 3根 → 黄
+      if(k == 1)
+         BuyDigit1[i]  = price;   // 1根 → 红
+      else
+         if(k == 2)
+            BuyDigit2[i]  = price;   // 2根 → 桔红
+         else
+            BuyDigit3[i]  = price;   // 3根 → 黄
      }
    else
      {
-      if(k == 1)      SellDigit1[i] = price;
-      else if(k == 2) SellDigit2[i] = price;
-      else            SellDigit3[i] = price;
+      if(k == 1)
+         SellDigit1[i] = price;
+      else
+         if(k == 2)
+            SellDigit2[i] = price;
+         else
+            SellDigit3[i] = price;
      }
   }
 
@@ -299,8 +308,10 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
       double cbLow   = low[i0];
       for(int j = i0 + 1; j <= i; j++)
         {
-         if(high[j] > cbHigh) cbHigh = high[j];
-         if(low[j]  < cbLow)  cbLow  = low[j];
+         if(high[j] > cbHigh)
+            cbHigh = high[j];
+         if(low[j]  < cbLow)
+            cbLow  = low[j];
         }
       double cbHeight = cbHigh - cbLow;
       if(cbHeight <= 0.0)
@@ -342,8 +353,10 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
       double wHigh = high[w0];
       for(int j = w0 + 1; j <= i; j++)
         {
-         if(low[j]  < wLow)  wLow  = low[j];
-         if(high[j] > wHigh) wHigh = high[j];
+         if(low[j]  < wLow)
+            wLow  = low[j];
+         if(high[j] > wHigh)
+            wHigh = high[j];
         }
       //   窗口包含CB自身，所以 cbLow==wLow 就是“CB是最低点”；用 ≤ 等价处理并列。
       bool lowExtreme  = (cbLow  <= wLow);
@@ -356,13 +369,17 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
       bool sell = false;
       if(isPin)
         {
-         if(lower >= upper && lowExtreme)  buy  = true;  // 底 pinbar：针在下
-         if(upper >= lower && highExtreme) sell = true;  // 顶 pinbar：针在上
+         if(lower >= upper && lowExtreme)
+            buy  = true;  // 底 pinbar：针在下
+         if(upper >= lower && highExtreme)
+            sell = true;  // 顶 pinbar：针在上
         }
       else
         {
-         if(lowExtreme)  buy  = true;           // 十字星低点极值 → 买
-         if(highExtreme) sell = true;           // 十字星高点极值 → 卖（可与上面同时）
+         if(lowExtreme)
+            buy  = true;           // 十字星低点极值 → 买
+         if(highExtreme)
+            sell = true;           // 十字星高点极值 → 卖（可与上面同时）
         }
       if(!buy && !sell)
          continue;                            // 位置不合格，继续试下一个 k
@@ -376,8 +393,8 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
          SetDigit(i, false, k, cbHigh);
       //--- 信号类型写进 TypeBuffer 供 EA 读取（SIG_* 编码见文件头）
       TypeBuffer[i] = isPin ? (buy && sell ? SIG_PIN_BOTH
-                                           : (buy ? SIG_BOTTOM_PIN : SIG_TOP_PIN))
-                            : SIG_DOJI;
+                               : (buy ? SIG_BOTTOM_PIN : SIG_TOP_PIN))
+                      : SIG_DOJI;
 
       //--- 报警（预留功能：取消本段与文件头部 InpAlerts 的注释即可启用）
       // if(live && InpAlerts)
@@ -406,7 +423,7 @@ int OnCalculate(const int rates_total,
    if(rates_total < 2)
       return(0);
 
-   //--- 统一按非序列索引处理（0 = 最旧一根）
+//--- 统一按非序列索引处理（0 = 最旧一根）
    ArraySetAsSeries(open,  false);
    ArraySetAsSeries(high,  false);
    ArraySetAsSeries(low,   false);
@@ -414,7 +431,7 @@ int OnCalculate(const int rates_total,
 
    UpdateAtr(rates_total, prev_calculated, high, low, close);
 
-   //--- 只评估已收盘K线：最后一根正在形成的K线永不评估 → 不重绘
+//--- 只评估已收盘K线：最后一根正在形成的K线永不评估 → 不重绘
    int warmup = MathMax(InpLookbackBars - 1, InpAtrPeriod + InpCbBars - 1);
    int start;
    if(prev_calculated <= 0)
@@ -437,7 +454,7 @@ int OnCalculate(const int rates_total,
       EvaluateBar(i, rates_total, prev_calculated > 0, open, high, low, close);
      }
 
-   //--- 正在形成的K线保持空值
+//--- 正在形成的K线保持空值
    ClearDigits(rates_total - 1);
 
    return(rates_total);
