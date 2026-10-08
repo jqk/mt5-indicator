@@ -8,33 +8,50 @@
 #property version     "1.00"
 #property description "组合K线(CB) 底/顶 pinbar 与十字星信号：收盘判定、不重绘。规格见 pinbar.md。"
 #property indicator_chart_window
-#property indicator_buffers 3
-#property indicator_plots   3
+#property indicator_buffers 7
+#property indicator_plots   7
 
-//--- plot 0: 买入三角（信号K线低点下方）
-#property indicator_label1  "买入"
+//--- plot 0-2: 买入数字1/2/3（信号K线低点下方，数字=CB组合K线数）
+#property indicator_label1  "买入1"
 #property indicator_type1   DRAW_ARROW
 #property indicator_color1  clrLime
 #property indicator_width1  1
-//--- plot 1: 卖出三角（信号K线高点上方）
-#property indicator_label2  "卖出"
+#property indicator_label2  "买入2"
 #property indicator_type2   DRAW_ARROW
-#property indicator_color2  clrRed
+#property indicator_color2  clrLime
 #property indicator_width2  1
-//--- plot 2: 信号类型（不可见，供 EA 通过 iCustom 读取）
-#property indicator_label3  "信号类型"
-#property indicator_type3   DRAW_NONE
+#property indicator_label3  "买入3"
+#property indicator_type3   DRAW_ARROW
+#property indicator_color3  clrLime
+#property indicator_width3  1
+//--- plot 3-5: 卖出数字1/2/3（信号K线高点上方，数字=CB组合K线数）
+#property indicator_label4  "卖出1"
+#property indicator_type4   DRAW_ARROW
+#property indicator_color4  clrRed
+#property indicator_width4  1
+#property indicator_label5  "卖出2"
+#property indicator_type5   DRAW_ARROW
+#property indicator_color5  clrRed
+#property indicator_width5  1
+#property indicator_label6  "卖出3"
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrRed
+#property indicator_width6  1
+//--- plot 6: 信号类型（不可见，供 EA 通过 iCustom 读取）
+#property indicator_label7  "信号类型"
+#property indicator_type7   DRAW_NONE
 
-//--- plot 2 的信号类型取值
+//--- plot 6 的信号类型取值
 #define SIG_NONE        0.0  // 无信号
 #define SIG_BOTTOM_PIN  1.0  // 底 pinbar（吊颈线）
 #define SIG_TOP_PIN     2.0  // 顶 pinbar（锤子线）
 #define SIG_DOJI        3.0  // 十字星
 #define SIG_PIN_BOTH    4.0  // 底+顶 pinbar 同时成立（影线等长且双极值）
 
-//--- Wingdings 三角符号
-#define ARROW_BUY  115     // ▲ 向上三角
-#define ARROW_SELL 116     // ▼ 向下三角
+//--- 数字符号（ASCII 码，同一字体 → 买卖端大小一致）
+#define DIGIT_1  49        // '1'
+#define DIGIT_2  50        // '2'
+#define DIGIT_3  51        // '3'
 
 //--- 组合与极值
 input group "=== 组合与极值 ==="
@@ -54,18 +71,18 @@ input bool   InpHeadWeighted   = false;   // 锤头比例按ATR加权
 input double InpMaxDojiBodyPct = 5.0;     // 十字星实体比例上限 %
 //--- 显示
 input group "=== 显示 ==="
-input color  InpBuyColor       = clrLime; // 买入三角颜色
-input color  InpSellColor      = clrRed;  // 卖出三角颜色
-input int    InpArrowWidth     = 1;       // 三角线宽
-input int    InpArrowShiftPx   = 10;      // 三角与K线的垂直间距（像素）
+input color  InpBuyColor       = clrLime; // 买入数字颜色
+input color  InpSellColor      = clrRed;  // 卖出数字颜色
+input int    InpArrowWidth     = 1;       // 数字线宽
+input int    InpArrowShiftPx   = 10;      // 数字与K线的垂直间距（像素）
 
 //--- 报警（预留：启用时取消本行与 EvaluateBar 中报警代码的注释）
 // input bool InpAlerts = false;  // 收盘信号弹窗报警
 
-//--- 指标缓冲
-double BuyBuffer[];    // 买入三角：锚定 CB 最低价
-double SellBuffer[];   // 卖出三角：锚定 CB 最高价
-double TypeBuffer[];   // 信号类型，取值见 SIG_*
+//--- 指标缓冲：买入/卖出各 3 个，分别承载数字 1/2/3（k = CB 组合 K 线数）
+double BuyDigit1[], BuyDigit2[], BuyDigit3[];     // 锚定 CB 最低价
+double SellDigit1[], SellDigit2[], SellDigit3[];  // 锚定 CB 最高价
+double TypeBuffer[];                              // 信号类型，取值见 SIG_*
 //--- Wilder ATR（非序列索引：0 = 最旧一根）
 double g_atr[];
 
@@ -92,31 +109,48 @@ int OnInit()
    if(InpArrowWidth < 1)
      { Print("参数错误：三角线宽必须不小于 1"); return(INIT_PARAMETERS_INCORRECT); }
 
-   //--- 缓冲区
-   SetIndexBuffer(0, BuyBuffer,  INDICATOR_DATA);
-   SetIndexBuffer(1, SellBuffer, INDICATOR_DATA);
-   SetIndexBuffer(2, TypeBuffer, INDICATOR_DATA);
+   //--- 缓冲区（0-2 买入1/2/3，3-5 卖出1/2/3，6 信号类型）
+   SetIndexBuffer(0, BuyDigit1,  INDICATOR_DATA);
+   SetIndexBuffer(1, BuyDigit2,  INDICATOR_DATA);
+   SetIndexBuffer(2, BuyDigit3,  INDICATOR_DATA);
+   SetIndexBuffer(3, SellDigit1, INDICATOR_DATA);
+   SetIndexBuffer(4, SellDigit2, INDICATOR_DATA);
+   SetIndexBuffer(5, SellDigit3, INDICATOR_DATA);
+   SetIndexBuffer(6, TypeBuffer, INDICATOR_DATA);
 
-   //--- 三角符号与像素位移（PLOT_ARROW_SHIFT 正值向下、负值向上）
-   PlotIndexSetInteger(0, PLOT_ARROW, ARROW_BUY);
-   PlotIndexSetInteger(1, PLOT_ARROW, ARROW_SELL);
-   PlotIndexSetInteger(0, PLOT_ARROW_SHIFT,  InpArrowShiftPx);   // 买入：低点下方
-   PlotIndexSetInteger(1, PLOT_ARROW_SHIFT, -InpArrowShiftPx);   // 卖出：高点上方
+   //--- 数字符号与像素位移（PLOT_ARROW_SHIFT 正值向下、负值向上）
+   PlotIndexSetInteger(0, PLOT_ARROW, DIGIT_1);
+   PlotIndexSetInteger(1, PLOT_ARROW, DIGIT_2);
+   PlotIndexSetInteger(2, PLOT_ARROW, DIGIT_3);
+   PlotIndexSetInteger(3, PLOT_ARROW, DIGIT_1);
+   PlotIndexSetInteger(4, PLOT_ARROW, DIGIT_2);
+   PlotIndexSetInteger(5, PLOT_ARROW, DIGIT_3);
+   //--- 买入（0-2）：低点下方；卖出（3-5）：高点上方
+   for(int p = 0; p < 3; p++)
+      PlotIndexSetInteger(p,   PLOT_ARROW_SHIFT,  InpArrowShiftPx);
+   for(int p = 3; p < 6; p++)
+      PlotIndexSetInteger(p,   PLOT_ARROW_SHIFT, -InpArrowShiftPx);
 
-   //--- 空值约定：箭头用 EMPTY_VALUE，信号类型用 0
-   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, 0.0);
+   //--- 空值约定：数字用 EMPTY_VALUE，信号类型用 0
+   for(int p = 0; p < 6; p++)
+      PlotIndexSetDouble(p, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, 0.0);
 
-   //--- 颜色与线宽（以输入参数为准，属性默认值仅是后备）
-   PlotIndexSetInteger(0, PLOT_LINE_COLOR, 0, InpBuyColor);
-   PlotIndexSetInteger(1, PLOT_LINE_COLOR, 0, InpSellColor);
-   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpArrowWidth);
-   PlotIndexSetInteger(1, PLOT_LINE_WIDTH, InpArrowWidth);
+   //--- 颜色与线宽（以输入参数为准）
+   for(int p = 0; p < 3; p++)
+     {
+      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0, InpBuyColor);
+      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
+     }
+   for(int p = 3; p < 6; p++)
+     {
+      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0, InpSellColor);
+      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
+     }
 
    //--- 预热期之前不绘制
    int draw_begin = MathMax(InpLookbackBars, InpAtrPeriod + InpCbBars);
-   for(int plot = 0; plot < 3; plot++)
+   for(int plot = 0; plot < 7; plot++)
       PlotIndexSetInteger(plot, PLOT_DRAW_BEGIN, draw_begin);
 
    IndicatorSetString(INDICATOR_SHORTNAME,
@@ -166,6 +200,43 @@ void UpdateAtr(const int rates_total, const int prev_calculated,
         }
       g_atr[i] = (g_atr[i-1] * (period - 1) + TrueRange(i, high, low, close)) / period;
      }
+  }
+
+//+------------------------------------------------------------------+
+//| 将买/卖数字写入对应 k 的缓冲（k=1..InpCbBars）                       |
+//+------------------------------------------------------------------+
+void SetBuyDigit(const int i, const int k, const double price)
+  {
+   if(k == 1)
+      BuyDigit1[i] = price;
+   else if(k == 2)
+      BuyDigit2[i] = price;
+   else
+      BuyDigit3[i] = price;
+  }
+
+void SetSellDigit(const int i, const int k, const double price)
+  {
+   if(k == 1)
+      SellDigit1[i] = price;
+   else if(k == 2)
+      SellDigit2[i] = price;
+   else
+      SellDigit3[i] = price;
+  }
+
+//+------------------------------------------------------------------+
+//| 清空索引 i 上的所有数字与信号类型                                    |
+//+------------------------------------------------------------------+
+void ClearDigits(const int i)
+  {
+   BuyDigit1[i]  = EMPTY_VALUE;
+   BuyDigit2[i]  = EMPTY_VALUE;
+   BuyDigit3[i]  = EMPTY_VALUE;
+   SellDigit1[i] = EMPTY_VALUE;
+   SellDigit2[i] = EMPTY_VALUE;
+   SellDigit3[i] = EMPTY_VALUE;
+   TypeBuffer[i] = SIG_NONE;
   }
 
 //+------------------------------------------------------------------+
@@ -242,11 +313,11 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
       if(!buy && !sell)
          continue;
 
-      //--- 流程第 5 步：画三角并记录类型
+      //--- 流程第 5 步：画数字（1/2/3 = CB 组合K线数 k）并记录类型
       if(buy)
-         BuyBuffer[i] = cbLow;
+         SetBuyDigit(i, k, cbLow);
       if(sell)
-         SellBuffer[i] = cbHigh;
+         SetSellDigit(i, k, cbHigh);
       TypeBuffer[i] = isPin ? (buy && sell ? SIG_PIN_BOTH
                                            : (buy ? SIG_BOTTOM_PIN : SIG_TOP_PIN))
                             : SIG_DOJI;
@@ -291,8 +362,12 @@ int OnCalculate(const int rates_total,
    int start;
    if(prev_calculated <= 0)
      {
-      ArrayInitialize(BuyBuffer,  EMPTY_VALUE);
-      ArrayInitialize(SellBuffer, EMPTY_VALUE);
+      ArrayInitialize(BuyDigit1,  EMPTY_VALUE);
+      ArrayInitialize(BuyDigit2,  EMPTY_VALUE);
+      ArrayInitialize(BuyDigit3,  EMPTY_VALUE);
+      ArrayInitialize(SellDigit1, EMPTY_VALUE);
+      ArrayInitialize(SellDigit2, EMPTY_VALUE);
+      ArrayInitialize(SellDigit3, EMPTY_VALUE);
       ArrayInitialize(TypeBuffer, SIG_NONE);
       start = MathMax(warmup, rates_total - 1 - InpMaxBars);   // 2.8：只算最近 InpMaxBars 根
      }
@@ -301,16 +376,12 @@ int OnCalculate(const int rates_total,
 
    for(int i = start; i <= rates_total - 2; i++)
      {
-      BuyBuffer[i]  = EMPTY_VALUE;
-      SellBuffer[i] = EMPTY_VALUE;
-      TypeBuffer[i] = SIG_NONE;
+      ClearDigits(i);
       EvaluateBar(i, rates_total, prev_calculated > 0, open, high, low, close);
      }
 
    //--- 正在形成的K线保持空值
-   BuyBuffer[rates_total-1]  = EMPTY_VALUE;
-   SellBuffer[rates_total-1] = EMPTY_VALUE;
-   TypeBuffer[rates_total-1] = SIG_NONE;
+   ClearDigits(rates_total - 1);
 
    return(rates_total);
   }
