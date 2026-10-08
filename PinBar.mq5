@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "jqk"
 #property link        ""
-#property version     "1.00"
+#property version     "1.10"
 #property description "组合K线(CB) 底/顶 pinbar 与十字星信号：收盘判定、不重绘。规格见 pinbar.md。"
 #property indicator_chart_window
 #property indicator_buffers 7
@@ -72,10 +72,9 @@ input double InpMaxDojiBodyPct = 5.0;     // 十字星实体比例上限 %
 input group "=== 显示 ==="
 input color  InpBuyColor       = clrLime; // 买入数字颜色
 input color  InpSellColor      = clrRed;  // 卖出数字颜色
-input int    InpArrowWidth     = 1;       // 数字线宽（预留，对象模式下暂不用）
-input int    InpArrowShiftPx   = 10;      // 数字与K线的垂直间距（像素，预留）
 input string InpNumberFont     = "Arial"; // 数字字体
 input int    InpNumberSize     = 12;      // 数字字号
+input int    InpNumberOffset   = 300;     // 数字与K线的垂直间距（点）
 
 //--- 报警（预留：启用时取消本行与 EvaluateBar 中报警代码的注释）
 // input bool InpAlerts = false;  // 收盘信号弹窗报警
@@ -107,8 +106,6 @@ int OnInit()
      { Print("参数错误：锤头比例上限必须在 1-50 之间"); return(INIT_PARAMETERS_INCORRECT); }
    if(InpMaxDojiBodyPct < 0.0 || InpMaxDojiBodyPct > 10.0)
      { Print("参数错误：十字比例必须在 0-10 之间"); return(INIT_PARAMETERS_INCORRECT); }
-   if(InpArrowWidth < 1)
-     { Print("参数错误：三角线宽必须不小于 1"); return(INIT_PARAMETERS_INCORRECT); }
 
    //--- 缓冲区（0-2 买入1/2/3，3-5 卖出1/2/3，6 信号类型）
    SetIndexBuffer(0, BuyDigit1,  INDICATOR_DATA);
@@ -193,7 +190,11 @@ void CreateDigitObject(const int i, const datetime t, const bool buy,
    if(ObjectFind(0, name) >= 0)
       ObjectDelete(0, name);
 
-   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, price))
+   //--- 垂直间距（点）：买入在低点下方、卖出在高点上方
+   double dist = (double)InpNumberOffset * _Point;
+   double ancPrice = buy ? price - dist : price + dist;
+
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, ancPrice))
       return;
 
    //--- 文本与字体（同一字体、字号 → 买卖端大小一致）
@@ -201,9 +202,9 @@ void CreateDigitObject(const int i, const datetime t, const bool buy,
    ObjectSetString(0, name, OBJPROP_FONT, InpNumberFont);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, InpNumberSize);
    ObjectSetInteger(0, name, OBJPROP_COLOR, buy ? InpBuyColor : InpSellColor);
+   //--- 水平居中于信号K线时间轴，垂直居中于锚点 → 数字正对当前K线
    ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
-   ObjectSetInteger(0, name, OBJPROP_ANCHOR,
-                    buy ? ANCHOR_TOP : ANCHOR_BOTTOM);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
 

@@ -116,8 +116,7 @@ CB 线开盘价与收盘价之差的绝对值与 CB 线整体高度的比值。�
 | 卖出数字颜色 | `InpSellColor` | color | clrRed | |
 | 数字字体 | `InpNumberFont` | string | Arial | 选取支持数字的字体 |
 | 数字字号 | `InpNumberSize` | int | 12 | 买卖端使用同一字号（大小一致） |
-| 数字线宽（预留） | `InpArrowWidth` | int | 1 | 对象模式暂不使用 |
-| 数字间距（预留） | `InpArrowShiftPx` | int | 10 | 对象模式暂不使用 |
+| 数字间距（点） | `InpNumberOffset` | int | 300 | 买入向下、卖出向上偏移；值越大数字离K线越远 |
 
 - 输入校验：n 范围、m > n、各比例范围，不合格拒绝加载并输出日志。
 - 比例比较使用全精度，两位小数仅用于显示；极值并列（同高/同低）视为合格；同方向连续信号暂不去重。
