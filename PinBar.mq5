@@ -8,50 +8,53 @@
 //   · 判断 CB 是“底 pinbar(吊颈线)/ 顶 pinbar(锤子线)/ 十字星”。
 //   · 只有当 CB 的极值(最高/最低价)同时是回看窗口 m 的极值时才算合格，给出买入/卖出信号。
 //   · 只在 K 线收盘时判断 → 信号一旦出现就不会变（不重绘）。
-//   · 信号数字(1/2/3)用 OBJ_TEXT 图表对象绘制（DRAW_ARROW 只能画 Wingdings 符号）。
+//   · 信号用 Wingdings 符号画在信号K线上下：K线下方=买入，K线上方=卖出，
+//     用颜色区分 CB 组合数：红=1根、桔红=2根、黄=3根（颜色见 plot 定义）。
 //+------------------------------------------------------------------+
 #property copyright   "jqk"
 #property link        ""
-#property version     "1.10"
+#property version     "1.20"
 #property description "组合K线(CB) 底/顶 pinbar 与十字星信号：收盘判定、不重绘。规格见 pinbar.md。"
 #property indicator_chart_window   // 画在主图窗口（叠加在K线上），而非子窗口
 #property indicator_buffers 7      // 指标缓冲总数（用于存放计算结果供EA/图表读取）
 #property indicator_plots   7      // 绘图序列数，与缓冲一一对应
 
-//--- MQL5 平台特性说明：
-//   指标显示“信号”有两种常见手段：
-//   1) indicator_buffers + DRAW_ARROW：缺点是该绘制方式固定用 Wingdings 符号字体，
-//      字符码 49/50/51('1/2/3') 在 Wingdings 里会渲染成文件夹等图形，而非文字数字。
-//   2) 图表对象 OBJ_TEXT（本指标采用）：可绘制真正的文字数字，字体/字号/颜色/锚定自控。
-//   因此下面 6 个数字缓冲仍保留（供 EA 用 iCustom 读取数值），但实际显示交给 OBJ_TEXT。
+//--- 关于“怎么画信号符号”的重要说明：
+//   MT5 的指标缓冲绘制样式 DRAW_ARROW 只能使用 Wingdings 符号字体渲染，
+//   字符码 0-255 会被解释成 Wingdings 里对应的图形（不是文字数字）。
+//   例如 49/50/51('1/2/3') 在 Wingdings 里会渲染成“文件夹”等图形，而不是数字，
+//   所以这里不追求画文字数字，而是改用【符号 + 颜色】双重区分：
+//     · 位置：K线下方=买入、K线上方=卖出；
+//     · 颜色：红=CB 由 1 根组成、桔红=2 根、黄=3 根。
+//   上下买卖用同一个符号(●实心圆点)，保证买卖两端大小一致、视觉统一。
 
-//--- plot 0-2: 买入数字1/2/3；数字由 OBJ_TEXT 对象绘制，这些缓冲只是“数值容器”(DRAW_NONE)
-#property indicator_label1  "买入1"
-#property indicator_type1   DRAW_NONE   // 不绘制，仅保留缓冲数值
-#property indicator_color1  clrLime
+//--- plot 0-2: 买入(画在信号K线下方)，按 k 分色：1红 2桔红 3黄
+#property indicator_label1  "买入1根"
+#property indicator_type1   DRAW_ARROW
+#property indicator_color1  clrRed
 #property indicator_width1  1
-#property indicator_label2  "买入2"
-#property indicator_type2   DRAW_NONE
-#property indicator_color2  clrLime
+#property indicator_label2  "买入2根"
+#property indicator_type2   DRAW_ARROW
+#property indicator_color2  clrOrange
 #property indicator_width2  1
-#property indicator_label3  "买入3"
-#property indicator_type3   DRAW_NONE
-#property indicator_color3  clrLime
+#property indicator_label3  "买入3根"
+#property indicator_type3   DRAW_ARROW
+#property indicator_color3  clrYellow
 #property indicator_width3  1
-//--- plot 3-5: 卖出数字1/2/3（同样只作数值容器）
-#property indicator_label4  "卖出1"
-#property indicator_type4   DRAW_NONE
+//--- plot 3-5: 卖出(画在信号K线上方)，同样按 k 分色：1红 2桔红 3黄
+#property indicator_label4  "卖出1根"
+#property indicator_type4   DRAW_ARROW
 #property indicator_color4  clrRed
 #property indicator_width4  1
-#property indicator_label5  "卖出2"
-#property indicator_type5   DRAW_NONE
-#property indicator_color5  clrRed
+#property indicator_label5  "卖出2根"
+#property indicator_type5   DRAW_ARROW
+#property indicator_color5  clrOrange
 #property indicator_width5  1
-#property indicator_label6  "卖出3"
-#property indicator_type6   DRAW_NONE
-#property indicator_color6  clrRed
+#property indicator_label6  "卖出3根"
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrYellow
 #property indicator_width6  1
-//--- plot 6: 信号类型（给 EA 用的“隐藏信号码”，本身也不绘制）
+//--- plot 6: 信号类型（给 EA 用的“隐藏信号码”，本身不绘制）
 #property indicator_label7  "信号类型"
 #property indicator_type7   DRAW_NONE
 
@@ -62,9 +65,16 @@
 #define SIG_DOJI        3.0  // 十字星
 #define SIG_PIN_BOTH    4.0  // 底+顶 pinbar 同时成立（影线等长且双极值）
 
-//--- OBJ_TEXT 对象名称前缀：用于“找到/删除”本指标创建的对象，避免与图上其它对象混淆
-#define OBJ_PREFIX_BUY  "jqkPB_"
-#define OBJ_PREFIX_SELL "jqkPS_"
+//--- 信号符号：Wingdings 108 = ● 实心圆点。
+//   买卖统一用一个符号(而不是上下三角)，这样两端渲染大小一致。
+//   说明：之所以不用数字 49/50/51，是因为 DRAW_ARROW 固定按 Wingdings 渲染，
+//   49/50/51 在 Wingdings 里是“文件夹”等图形而非数字。
+#define ARROW_MARK  108       // ● 实心圆点
+
+//--- 每种组合数 k 对应的颜色：红=1根、桔红=2根、黄=3根（k 见 SIG 组合数）
+#define COLOR_K1  clrRed      // 1 根CB组成 → 红
+#define COLOR_K2  clrOrange   // 2 根CB组成 → 桔红
+#define COLOR_K3  clrYellow   // 3 根CB组成 → 黄
 
 //--- MQL5 输入参数：`input` 语句写出的参数会显示在“输入”对话框并可随时修改，
 //   修改后指标自动重新加载(OnInit 重新执行)。`input group "..."` 只是参数分组显示。
@@ -86,21 +96,19 @@ input bool   InpHeadWeighted   = false;   // 锤头比例按ATR加权：true 时
 input double InpMaxDojiBodyPct = 5.0;     // 十字星实体比例上限 %
 //--- 显示
 input group "=== 显示 ==="
-input color  InpBuyColor       = clrLime; // 买入数字颜色
-input color  InpSellColor      = clrRed;  // 卖出数字颜色
-input string InpNumberFont     = "Arial"; // 数字字体（选择支持数字的字体即可）
-input int    InpNumberSize     = 12;      // 数字字号（买卖端同字号 → 大小一致）
-input int    InpNumberOffset   = 300;     // 数字与K线的垂直间距（点）：值越大离K线越远
+input int    InpArrowWidth     = 1;       // 信号符号线宽（粗细）
+input int    InpArrowShiftPx   = 10;      // 信号与K线的垂直间距（像素）：买入向下、卖出向上偏移
+//说明：信号颜色不用输入——按组合数 k 固定：1=红、2=桔红、3=黄（见 COLOR_K1..K3）。
 
 //--- 报警（预留：启用时取消本行与 EvaluateBar 中报警代码的注释）
 // input bool InpAlerts = false;  // 收盘信号弹窗报警
 
 //--- 全局缓冲数组声明。注意：MQL5 中下标默认 0 是“最旧”K线（非序列），
 //   我们主动用 ArraySetAsSeries(...,false) 固定这一约定，全程用同一套索引，避免混乱。
-//--- 指标缓冲：买入/卖出各 3 个，分别承载数字 1/2/3（k = CB 组合 K 线数）。
-//   里面存的是“CB极值价”（买入=CB最低价、卖出=CB最高价），仅供 EA/iCustom 读取数值。
-double BuyDigit1[], BuyDigit2[], BuyDigit3[];     // 买入：存 CB 最低价（按 k 拆到 1/2/3 三个缓冲）
-double SellDigit1[], SellDigit2[], SellDigit3[];  // 卖出：存 CB 最高价（按 k 拆到 1/2/3 三个缓冲）
+//--- 指标缓冲：买入/卖出各 3 个，分别对应符号颜色 红(1根)/桔红(2根)/黄(3根)(k=CB组合数)。
+//   里面存的是“CB极值价”（买入=CB最低价、卖出=CB最高价），价处即画符号处，也供 EA 读取数值。
+double BuyDigit1[], BuyDigit2[], BuyDigit3[];     // 买入：存 CB 最低价，按 k 分到 1/2/3(即红/桔红/黄)
+double SellDigit1[], SellDigit2[], SellDigit3[];  // 卖出：存 CB 最高价，按 k 分到 1/2/3(即红/桔红/黄)
 double TypeBuffer[];                              // 信号类型编码，取值见 SIG_*
 //--- Wilder ATR（非序列索引：0 = 最旧一根），在指标内部算好备用
 double g_atr[];
@@ -140,15 +148,33 @@ int OnInit()
    SetIndexBuffer(5, SellDigit3, INDICATOR_DATA);
    SetIndexBuffer(6, TypeBuffer, INDICATOR_DATA);
 
-   //--- 空值约定：没有信号的K线，数字缓冲填 EMPTY_VALUE（绘制时自动跳过），
+   //--- 为 6 个信号 plot 设置：使用的符号、颜色、线宽、垂直偏移。
+   //   PLOT_ARROW    = 信号用的 Wingdings 字符（这里统一用 ● 实心圆点）；
+   //   PLOT_LINE_COLOR = 按 k 分色：plot0/3 红(1根)、1/4 桔红(2根)、2/5 黄(3根)；
+   //   PLOT_ARROW_SHIFT = 像素垂直偏移：（正值向下、负值向上）
+   //       买入(0-2) 向下偏移 → 符号画在K线低点下方；卖出(3-5) 向上偏移 → 画在高点上方。
+   for(int p = 0; p < 3; p++)                    // 买入 0-2
+     {
+      PlotIndexSetInteger(p, PLOT_ARROW, ARROW_MARK);
+      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
+      PlotIndexSetInteger(p, PLOT_ARROW_SHIFT, InpArrowShiftPx);   // 正=向下
+      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0,
+                          (p == 0) ? COLOR_K1 : (p == 1) ? COLOR_K2 : COLOR_K3);
+     }
+   for(int p = 3; p < 6; p++)                    // 卖出 3-5
+     {
+      PlotIndexSetInteger(p, PLOT_ARROW, ARROW_MARK);
+      PlotIndexSetInteger(p, PLOT_LINE_WIDTH, InpArrowWidth);
+      PlotIndexSetInteger(p, PLOT_ARROW_SHIFT, -InpArrowShiftPx);  // 负=向上
+      PlotIndexSetInteger(p, PLOT_LINE_COLOR, 0,
+                          (p == 3) ? COLOR_K1 : (p == 4) ? COLOR_K2 : COLOR_K3);
+     }
+
+   //--- 空值约定：没有信号的K线，6个信号缓冲填 EMPTY_VALUE（绘制时自动跳过），
    //   信号类型缓冲填 0（SIG_NONE）。PLOT_EMPTY_VALUE 告诉平台“什么值算空”。
    for(int p = 0; p < 6; p++)
       PlotIndexSetDouble(p, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, 0.0);
-
-   //--- 清理可能遗留的对象（切换参数/重载时防止残留）：OnInit 每次都会执行，
-   //   如果上次运行留下的 OBJ_TEXT 没删掉，这里会统一清一遍。
-   CleanupObjects();
 
    //--- 绘制起点：前 draw_begin 根K线属于“预热/回看不足”区域，不画信号，
    //   避免在数据不足时产生误导性的早期信号。所有 plot 都从这个起点开始。
@@ -215,51 +241,18 @@ void UpdateAtr(const int rates_total, const int prev_calculated,
   }
 
 //+------------------------------------------------------------------+
-//| 创建一个数字文本对象 OBJ_TEXT                                      |
-//| buy=true  → 买入，数字画在 CB 最低价下(InpNumberOffset点)；           |
-//| buy=false → 卖出，数字画在 CB 最高价上(InpNumberOffset点)；           |
-//| k = CB 组合K线数(1..3)，即要显示的数字内容。                        |
-//| MQL5：图表对象(OBJ_TEXT)与缓冲不同——它是不进数组、独立存在的图形元素，|
-//| 需要按名字查找(ObjectFind/Delete)，用前缀 jqkPB_/jqkPS_ 来归集管理。   |
+//| 把一根K线的信号按 k 写入对应“颜色”缓冲                              |
+//| buy=true → 写入买入缓冲(存 CB 最低价)；buy=false → 写入卖出缓冲(CB 最高价)。|
+//| k = CB 组合K线数(1..3)，决定写进 红(1)/桔红(2)/黄(3) 哪个缓冲，     |
+//| 而图上的符号/颜色是由“绘图序列”固定设定的，所以只要价写进对了缓冲，就自动变色。|
 //+------------------------------------------------------------------+
-void CreateDigitObject(const int i, const datetime t, const bool buy,
-                       const int k, const double price)
+void SetDigit(const int i, const bool buy, const int k, const double price)
   {
-   //--- 对象名 = 前缀 + K线索引，保证“一根K线一个对象”、名字唯一
-   string name = (buy ? OBJ_PREFIX_BUY : OBJ_PREFIX_SELL) + IntegerToString(i);
-   //--- 若同名对象已存在先删掉，再重建（用于重新评估同一根K线时覆盖旧数字）
-   if(ObjectFind(0, name) >= 0)
-      ObjectDelete(0, name);
-
-   //--- 垂直间距：买入向左下、卖出向上，偏移 InpNumberOffset 个点(point)。
-   //   _Point 是当前品种的“最小报价单位”，用它换算成价格。
-   double dist = (double)InpNumberOffset * _Point;
-   double ancPrice = buy ? price - dist : price + dist;
-
-   //--- ObjectCreate 第一个参数 0 表示“当前图表”；OBJ_TEXT 是纯文字对象。
-   if(!ObjectCreate(0, name, OBJ_TEXT, 0, t, ancPrice))
-      return;
-
-   //--- 文本内容：把 k 转成字符 '1'/'2'/'3'
-   ObjectSetString(0, name, OBJPROP_TEXT, IntegerToString(k));
-   ObjectSetString(0, name, OBJPROP_FONT, InpNumberFont);      // 字体
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, InpNumberSize); // 字号
-   ObjectSetInteger(0, name, OBJPROP_COLOR, buy ? InpBuyColor : InpSellColor);
-   //--- 对齐：ALIGN_CENTER 水平居中，ANCHOR_CENTER 垂直居中于锚点
-   //   (这也是之前“数字被画到下一根”问题的关键——必须水平居中于本K线时间轴)
-   ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
-   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_CENTER);
-   //--- 禁止被鼠标选中/禁止在对象列表里干扰用户，纯信号标识
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-
-   //--- 同时把数值写进缓冲，供 EA 用 iCustom 读（对象不上缓冲，EA 读不到）：
-   //   按 k 决定写进哪一个“数字缓冲”。这里存的是原始极值价 price(不加偏移)。
    if(buy)
      {
-      if(k == 1)      BuyDigit1[i]  = price;
-      else if(k == 2) BuyDigit2[i]  = price;
-      else            BuyDigit3[i]  = price;
+      if(k == 1)      BuyDigit1[i]  = price;   // 1根 → 红
+      else if(k == 2) BuyDigit2[i]  = price;   // 2根 → 桔红
+      else            BuyDigit3[i]  = price;   // 3根 → 黄
      }
    else
      {
@@ -270,21 +263,10 @@ void CreateDigitObject(const int i, const datetime t, const bool buy,
   }
 
 //+------------------------------------------------------------------+
-//| 删除索引 i 对应的买卖数字对象（重新评估前先清掉旧数字）                |
+//| 清空索引 i 上所有信号缓冲与类型                                     |
+//| 等价于“把这一根K线恢复成无信号状态”，供 OnCalculate 每根K线先清再评。 |
 //+------------------------------------------------------------------+
-void DeleteObjects(const int i)
-  {
-   string nb = OBJ_PREFIX_BUY  + IntegerToString(i);
-   string ns = OBJ_PREFIX_SELL + IntegerToString(i);
-   if(ObjectFind(0, nb) >= 0) ObjectDelete(0, nb);
-   if(ObjectFind(0, ns) >= 0) ObjectDelete(0, ns);
-  }
-
-//+------------------------------------------------------------------+
-//| 清空索引 i 上的所有数字缓冲、对象与信号类型                          |
-//| 等价于“把这一根K线恢复成无信号状态”，供 OnCalculate 每根K线先清再评。  |
-//+------------------------------------------------------------------+
-void ClearIndex(const int i)
+void ClearDigits(const int i)
   {
    BuyDigit1[i]  = EMPTY_VALUE;
    BuyDigit2[i]  = EMPTY_VALUE;
@@ -293,23 +275,6 @@ void ClearIndex(const int i)
    SellDigit2[i] = EMPTY_VALUE;
    SellDigit3[i] = EMPTY_VALUE;
    TypeBuffer[i] = SIG_NONE;
-   DeleteObjects(i);                            // 顺带把该根上的OBJ_TEXT也删掉
-  }
-
-//+------------------------------------------------------------------+
-//| 删除本指标创建的全部对象（重载/全量重建时调用）                       |
-//| MQL5：图表对象是全局共享的，所以遍历时用名字前缀来辨认哪些属于本指标。  |
-//| 倒序删除(从最后一个往第一个)是因为删除会改变对象序号，倒序更安全。    |
-//+------------------------------------------------------------------+
-void CleanupObjects()
-  {
-   for(int i = ObjectsTotal(0) - 1; i >= 0; i--)
-     {
-      string name = ObjectName(0, i);
-      if(StringFind(name, OBJ_PREFIX_BUY)  == 0 ||
-         StringFind(name, OBJ_PREFIX_SELL) == 0)
-         ObjectDelete(0, name);
-     }
   }
 
 //+------------------------------------------------------------------+
@@ -319,7 +284,6 @@ void CleanupObjects()
 //| 任一 k 通过了全部流程就给出信号并 return（不再尝试更大的 k）。       |
 //+------------------------------------------------------------------+
 void EvaluateBar(const int i, const int rates_total, const bool live,
-                 const datetime &time[],
                  const double &open[], const double &high[],
                  const double &low[],  const double &close[])
   {
@@ -403,13 +367,13 @@ void EvaluateBar(const int i, const int rates_total, const bool live,
       if(!buy && !sell)
          continue;                            // 位置不合格，继续试下一个 k
 
-      //--- 流程第 5 步：画数字并记录信号类型。
-      //   数字内容 = k（1/2/3 告诉使用者这是“几根K线组合”得出的信号）。
-      //   买入数字画在CB最低价下方，卖出数字画在CB最高价上方。
+      //--- 流程第 5 步：写入信号缓冲（图上据此画符号）并记录信号类型。
+      //   符号统一是 ●；颜色由 k 决定（1红/2桔红/3黄，由 plot 序列颜色自动呈现）。
+      //   买入价写进“买入”缓冲 → 符号画在 CB 最低价下方；卖出写进“卖出”缓冲 → 画在上方。
       if(buy)
-         CreateDigitObject(i, time[i], true,  k, cbLow);
+         SetDigit(i, true,  k, cbLow);
       if(sell)
-         CreateDigitObject(i, time[i], false, k, cbHigh);
+         SetDigit(i, false, k, cbHigh);
       //--- 信号类型写进 TypeBuffer 供 EA 读取（SIG_* 编码见文件头）
       TypeBuffer[i] = isPin ? (buy && sell ? SIG_PIN_BOTH
                                            : (buy ? SIG_BOTTOM_PIN : SIG_TOP_PIN))
@@ -443,7 +407,6 @@ int OnCalculate(const int rates_total,
       return(0);
 
    //--- 统一按非序列索引处理（0 = 最旧一根）
-   ArraySetAsSeries(time,  false);
    ArraySetAsSeries(open,  false);
    ArraySetAsSeries(high,  false);
    ArraySetAsSeries(low,   false);
@@ -463,7 +426,6 @@ int OnCalculate(const int rates_total,
       ArrayInitialize(SellDigit2, EMPTY_VALUE);
       ArrayInitialize(SellDigit3, EMPTY_VALUE);
       ArrayInitialize(TypeBuffer, SIG_NONE);
-      CleanupObjects();                       // 全量重算：清掉所有旧对象避免残留
       start = MathMax(warmup, rates_total - 1 - InpMaxBars);   // 2.8：只算最近 InpMaxBars 根
      }
    else
@@ -471,12 +433,12 @@ int OnCalculate(const int rates_total,
 
    for(int i = start; i <= rates_total - 2; i++)
      {
-      ClearIndex(i);
-      EvaluateBar(i, rates_total, prev_calculated > 0, time, open, high, low, close);
+      ClearDigits(i);
+      EvaluateBar(i, rates_total, prev_calculated > 0, open, high, low, close);
      }
 
    //--- 正在形成的K线保持空值
-   ClearIndex(rates_total - 1);
+   ClearDigits(rates_total - 1);
 
    return(rates_total);
   }
